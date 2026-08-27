@@ -24,7 +24,7 @@ Most kernels will match 2-4 patterns simultaneously. **Rank them by magnitude** 
 
 **Signals:**
 - `launch__waves_per_multiprocessor < 0.5`
-- `launch__grid_size < device__attribute_multiprocessor_count` (e.g., 64 blocks on a 148-SM B200)
+- `launch__grid_size < device__attribute_multiprocessor_count` (e.g., 64 blocks on a 132-SM H200, or 148-SM B200, or 160-SM B300)
 - NCU rule: *"The grid for this launch is configured to execute only N blocks, which is less than the M multiprocessors used."* with `Est. Speedup: 50-90%`
 
 **Why:** each CTA occupies at most one SM; with fewer CTAs than SMs, some SMs are completely idle throughout the kernel.
@@ -135,7 +135,8 @@ If `K < 8`: consider batching multiple iterations' results into a vectorized wri
 **First-line fix:** increase in-flight memory requests:
 - **Unroll the load loop** so 4-8 loads are issued before any value is used. Compiler + hardware reorders.
 - **Add more independent warps** — raise occupancy (Pattern J).
-- **`cp.async` (Ampere+) / TMA (Hopper+) / tcgen05.cp (Blackwell)** for bulk async loads that don't block issue.
+- 🔵 **Hopper (H200/H800):** use `cp.async.bulk` + TMA for hardware-accelerated async tile loads that bypass the LSU pipe.
+- 🟠 **Blackwell (B200/B300):** use `tcgen05.cp` (smem→TMEM async) for MMA operand staging.
 
 **Deeper fixes:**
 - Software pipelining: while tile N is being computed, pre-load tile N+1 into shared memory.
@@ -157,11 +158,14 @@ If `K < 8`: consider batching multiple iterations' results into a vectorized wri
 
 **Why:** kernel uses scalar FMA via the ALU pipe instead of tensor cores. On B200, tensor cores can do 16× the FMA throughput of scalar pipes for BF16→FP32.
 
-**First-line fix:** use `WMMA` (Ampere+) / `wgmma` (Hopper) / `tcgen05.mma` (Blackwell). If hand-rolling is too much, use CUTLASS 4.x or cuBLAS, which are already tuned for the target arch.
+**First-line fix:** use the appropriate MMA API for the target arch:
+- 🔵 **Hopper (H200/H800):** `wgmma` (warp-group MMA, 128-thread warpgroup). Use CUTLASS 3.x or cuBLAS — hand-rolling `wgmma` + TMA is complex. FP8 is the lowest supported precision.
+- 🟠 **Blackwell (B200/B300):** `tcgen05.mma` (single elected thread issues for the CTA). Use CUTLASS 4.x or cuBLAS. Supports FP4 (NVFP4/MXFP4) for higher throughput.
 
 **Deeper fixes:**
-- Restructure data layout to meet MMA tile-shape constraints (e.g., `m16n8k16` for BF16).
-- Use shared memory + TMA (Hopper) / TMEM (Blackwell) staging.
+- Restructure data layout to meet MMA tile-shape constraints (e.g., `m16n8k16` for BF16 wgmma on Hopper; `m64n64k16` TMEM tile on Blackwell).
+- 🔵 Hopper: shared memory + TMA for async tile loads into SMEM before wgmma.
+- 🟠 Blackwell: TMEM for accumulators; `tcgen05.cp` for smem→TMEM operand staging.
 
 **Exceptions:**
 - Non-matrix workloads (reduction, sort, element-wise) — tensor cores don't help.
@@ -298,7 +302,8 @@ If `K < 8`: consider batching multiple iterations' results into a vectorized wri
 **First-line fix:** double-buffer. Use two shared-memory tiles; while computing on tile A, load tile B. `__syncthreads` between phases.
 
 **Deeper fixes:**
-- Multi-stage pipeline (3-4 stages on Blackwell — see Blackwell principle 15). Use `cp.async` / TMA for async loads.
+- 🔵 **Hopper (H200/H800):** multi-stage pipeline with `cp.async.bulk` + TMA + `mbarrier` — 3-4 stage pipelines hide HBM latency without blocking issue. See [`../hopper-cuda-programming.md`](../hopper-cuda-programming.md).
+- 🟠 **Blackwell (B200/B300):** multi-stage pipeline with `tcgen05.cp` + `tcgen05.mma` implicit in-order execution. See [`../blackwell-cuda-programming.md`](../blackwell-cuda-programming.md) principle 15.
 
 **Cross-ref:** Blackwell principle 15.
 

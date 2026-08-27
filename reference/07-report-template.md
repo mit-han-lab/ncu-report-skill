@@ -12,9 +12,9 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 # `<kernel_name>` Profiling Report
 
 **Kernel:** `<exact kernel name or template instantiation>`
-**Target GPU:** NVIDIA B200 (148 SM, CC 10.0)   (or whatever is actually being profiled)
+**Target GPU:** NVIDIA <B200 (148 SM, CC 10.0) | B300 (160 SM, CC 10.3) | H200 (132 SM, CC 9.0) | H800 (132 SM, CC 9.0)>
 **Nsight Compute:** 2026.x.x
-**Compile flags:** `nvcc -O2 -std=c++17 -lineinfo -gencode=arch=compute_100,code=sm_100`
+**Compile flags:** `nvcc -O2 -std=c++17 -lineinfo <-gencode=arch=compute_100,code=sm_100 | -gencode=arch=compute_103,code=sm_103 | -gencode=arch=compute_90,code=sm_90>`
 **Profile date:** YYYY-MM-DD
 **Run directory:** `profile/<run_name>/`
 
@@ -27,7 +27,7 @@ Save as `$PROFILE_RUN_DIR/REPORT.md`.
 - Harness: `profile/<run_name>/harness/*.cu` — what it is (standalone driver / the original binary / something else). Why.
 - Workloads: which real tensors / shapes were used. Cite the workload UUID or shape tuple.
 - Dispatch paths covered: list each `(SF / template params, grid, block)` combination profiled.
-- Metric-name caveats: any metric names that differ from stock NCU docs (common on B200 / sm_100).
+- Metric-name caveats: any metric names that differ from stock NCU docs. Blackwell (sm_100/sm_103) adds `sass_` prefix to inst_executed_op_* metrics and splits `dram__bytes.sum`; Hopper (sm_90) uses older names. See [`08-gpu-metric-names.md`](reference/08-gpu-metric-names.md).
 
 Minimal runnable command listing:
 

@@ -155,7 +155,7 @@ ncu --list-sets           # list all sets
 ncu --list-sections       # list all sections
 ```
 
-Rough mapping (B200, ncu 2026.1):
+Rough mapping (Blackwell B200/B300 and Hopper H200/H800 are similar; B200 with ncu 2026.1 shown):
 
 | Set | Sections included | Replay passes | Use when |
 |---|---|---|---|
@@ -210,7 +210,7 @@ sudo nvidia-smi -lgc <boost_clock_mhz>
 sudo nvidia-smi -rgc
 ```
 
-For B200 this is usually unnecessary — the GPU boosts to steady-state during profiling because ncu replays the kernel 45+ times. If your results are jittery between runs, lock the clock.
+For Blackwell (B200/B300) and Hopper (H200/H800) this is usually unnecessary — the GPU boosts to steady-state during profiling because ncu replays the kernel 45+ times. If your results are jittery between runs, lock the clock.
 
 ---
 

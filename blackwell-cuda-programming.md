@@ -2,40 +2,61 @@
 
 ## 目标平台
 
-本文档的所有准则和建议均针对以下开发环境：
+本文档针对 NVIDIA **Blackwell 系列**（B200 和 B300），两者共用相同的 tcgen05 指令集和 TMEM 编程模型，主要区别在于规格参数：
 
-- **GPU 架构：** NVIDIA Blackwell — B200（Compute Capability 10.0，双 die 共 148 SM）
-- **CUDA Toolkit：** 13.2
-- **编译目标：** `sm_100a`（`-arch=sm_100a` 或 `-gencode arch=compute_100a,code=sm_100a`）
+| 参数 | B200 | B300（Blackwell Ultra） |
+|------|------|------------------------|
+| Compute Capability | 10.0（sm_100） | 10.3（sm_103） |
+| SM 数量 | 148（2 die × 74） | 160 |
+| HBM 容量 | 192 GB HBM3e | 288 GB HBM3e |
+| HBM 带宽 | 8 TB/s | 8 TB/s |
+| FP4 Tensor（dense） | 9 PFLOPS | 15 PFLOPS |
+| FP16/BF16 Tensor（dense） | 2.25 PFLOPS | 3.7 PFLOPS |
+| TDP | 1,000 W | 1,400 W |
+| ncu chip 名 | `gb202` | `gb300` |
+
+- **CUDA Toolkit：** ≥ 13.0（sm_103 需要 CUDA 12.9+）
+- **编译目标：**
+  - B200 专用：`-arch=sm_100a` 或 `-gencode arch=compute_100a,code=sm_100a`
+  - B300 专用：`-gencode arch=compute_103,code=sm_103`
+  - **B200 + B300 通用**（推荐）：`-gencode arch=compute_100,code=compute_100`（`compute_100f` 家族，sm_100 和 sm_103 均可运行）
 
 编译命令示例：
 ```bash
+# B200 专用
 nvcc -arch=sm_100a -lineinfo -O3 -o my_kernel my_kernel.cu
+
+# B300 专用
+nvcc -gencode arch=compute_103,code=sm_103 -lineinfo -O3 -o my_kernel my_kernel.cu
+
+# B200 + B300 通用（优先使用这个）
+nvcc -gencode arch=compute_100,code=compute_100 -lineinfo -O3 -o my_kernel my_kernel.cu
 ```
 
 ---
 
-## Blackwell B200 架构关键参数速查
+## Blackwell 架构关键参数速查
 
-| 参数 | B200 数值 | 对比 H100 |
-|------|----------|----------|
-| SM 数量 | 148（2 die × 74 SM） | 132 |
-| 每 SM 最大 warp 数 | 64 | 64 |
-| 每 SM 寄存器文件 | 64K × 32-bit | 64K × 32-bit |
-| 每线程最大寄存器 | 255 | 255 |
-| 每 SM 最大 thread block 数 | 32 | 32 |
-| Shared Memory 每 SM（可配置） | 最高 228 KB（可用 227 KB） | 最高 228 KB |
-| **Tensor Memory (TMEM) 每 SM** | **256 KB（512 列 × 128 lane × 32-bit）** | **无** |
-| L2 Cache | 126 MB（GB200） | 50 MB |
-| HBM 容量 | 192 GB HBM3e | 80 GB HBM3 |
-| HBM 带宽 | 8 TB/s | 3.35 TB/s |
-| FP4 Tensor（dense/sparse） | 9 / 18 PFLOPS | 不支持 |
-| FP8 Tensor（dense/sparse） | 4.5 / 9 PFLOPS | 1.98 / 3.96 PFLOPS |
-| FP16/BF16 Tensor（dense/sparse） | 2.25 / 4.5 PFLOPS | 0.99 / 1.98 PFLOPS |
-| TF32 Tensor（dense/sparse） | 1.13 / 2.25 PFLOPS | 0.49 / 0.99 PFLOPS |
-| FP64 Tensor | 45 TFLOPS | 67 TFLOPS |
-| NVLink 带宽 | 1.8 TB/s（NVLink 5） | 900 GB/s（NVLink 4） |
-| 最大 Cluster size（portable / non-portable） | 8 / 16 | 8 / 16 |
+| 参数 | B200 | B300（Blackwell Ultra） | 对比 H200（Hopper） |
+|------|------|------------------------|-------------------|
+| SM 数量 | 148（2 die × 74） | 160 | 132 |
+| 每 SM 最大 warp 数 | 64 | 64 | 64 |
+| 每 SM 寄存器文件 | 64K × 32-bit | 64K × 32-bit | 64K × 32-bit |
+| 每线程最大寄存器 | 255 | 255 | 255 |
+| 每 SM 最大 thread block 数 | 32 | 32 | 32 |
+| Shared Memory 每 SM（可配置） | 最高 228 KB | 最高 228 KB | 最高 228 KB |
+| **Tensor Memory (TMEM) 每 SM** | **256 KB** | **256 KB** | **无** |
+| L2 Cache | 126 MB | 192 MB | 50 MB |
+| HBM 容量 | 192 GB HBM3e | 288 GB HBM3e | 141 GB HBM3e |
+| HBM 带宽 | 8 TB/s | 8 TB/s | 4.8 TB/s |
+| FP4 Tensor（dense/sparse） | 9 / 18 PFLOPS | 15 / 30 PFLOPS | 不支持 |
+| FP8 Tensor（dense/sparse） | 4.5 / 9 PFLOPS | 7.5 / 15 PFLOPS | 1.98 / 3.96 PFLOPS |
+| FP16/BF16 Tensor（dense/sparse） | 2.25 / 4.5 PFLOPS | 3.7 / 7.4 PFLOPS | 0.99 / 1.98 PFLOPS |
+| TF32 Tensor（dense/sparse） | 1.13 / 2.25 PFLOPS | 1.85 / 3.7 PFLOPS | 0.49 / 0.99 PFLOPS |
+| FP64 Tensor | 45 TFLOPS | 75 TFLOPS | 67 TFLOPS |
+| NVLink 带宽 | 1.8 TB/s（NVLink 5） | 1.8 TB/s（NVLink 5） | 900 GB/s（NVLink 4） |
+| 最大 Cluster size（portable / non-portable） | 8 / 16 | 8 / 16 | 8 / 8 |
+| Compute Capability | sm_100 | sm_103 | sm_90 |
 
 ---
 

@@ -1,13 +1,22 @@
 ---
 name: ncu-report-skill
-description: Profile CUDA kernels with Nsight Compute on B200 / sm_100. Use when the user asks to profile a kernel, analyze its performance, diagnose bottlenecks, read an ncu report, or write an optimization plan — including variants in Chinese ("profile 一下", "为什么慢", "ncu 报告").
+description: Profile CUDA kernels with Nsight Compute on B200 / B300 / H200 / H800 (sm_100 / sm_103 / sm_90). Use when the user asks to profile a kernel, analyze its performance, diagnose bottlenecks, read an ncu report, or write an optimization plan — including variants in Chinese ("profile 一下", "为什么慢", "ncu 报告").
 ---
 
-# Skill: CUDA Kernel Profiling (B200 / Nsight Compute)
+# Skill: CUDA Kernel Profiling (Nsight Compute — Blackwell / Hopper)
 
 **When to use:** user asks to profile a CUDA kernel, analyze its performance, find its bottlenecks, or write an optimization plan based on Nsight Compute data. Triggers include: "profile X", "为什么这个 kernel 慢", "ncu report 说...", "下一步怎么优化", "帮我看一下这份 ncu 报告".
 
-**Target hardware (this repo):** NVIDIA B200 (sm_100, CC 10.0, 148 SMs, 192 GB HBM3e). Most advice below is generic; B200-specific notes are explicitly marked.
+**Supported target hardware:**
+
+| GPU | Architecture | CC | SMs | HBM BW | ncu chip | Companion doc |
+|---|---|---|---|---|---|---|
+| B200 | Blackwell | sm_100 / CC 10.0 | 148 | 8 TB/s | `gb202` | [`blackwell-cuda-programming.md`](blackwell-cuda-programming.md) |
+| B300 | Blackwell Ultra | sm_103 / CC 10.3 | 160 | 8 TB/s | `gb300` | [`blackwell-cuda-programming.md`](blackwell-cuda-programming.md) |
+| H200 | Hopper | sm_90 / CC 9.0 | 132 | 4.8 TB/s | `gh100` | [`hopper-cuda-programming.md`](hopper-cuda-programming.md) |
+| H800 | Hopper | sm_90 / CC 9.0 | 132 | ~2.0 TB/s | `gh100` | [`hopper-cuda-programming.md`](hopper-cuda-programming.md) |
+
+Most advice in this skill is **architecture-agnostic**. Architecture-specific notes are explicitly marked with 🔵 **Hopper** or 🟠 **Blackwell**.
 
 ---
 
@@ -53,7 +62,7 @@ Most under-performing CUDA kernels are under-performing for exactly one reason t
 | [`reference/05-analysis-dimensions.md`](reference/05-analysis-dimensions.md) | Six analysis dimensions: occupancy, balance, stalls, tensor core, timeline, memory |
 | [`reference/06-diagnosis-playbook.md`](reference/06-diagnosis-playbook.md) | Pattern → diagnosis → fix. Merges Blackwell programming principles with NCU signals |
 | [`reference/07-report-template.md`](reference/07-report-template.md) | How to structure the final report |
-| [`reference/08-b200-metric-names.md`](reference/08-b200-metric-names.md) | sm_100 metric names vs older GPUs — many common names are different |
+| [`reference/08-gpu-metric-names.md`](reference/08-gpu-metric-names.md) | Metric names by architecture: sm_90 (Hopper) vs sm_100/sm_103 (Blackwell) vs older GPUs |
 | [`reference/09-common-issues.md`](reference/09-common-issues.md) | Permissions, PM sampling gaps, TVM-FFI / PyTorch gotchas |
 
 ### Helpers (reusable code)
@@ -72,7 +81,7 @@ Most under-performing CUDA kernels are under-performing for exactly one reason t
 
 ## Critical lessons (don't skip)
 
-1. **The stock `ncu_profile_skill.md` metric names don't all work on B200.** Names like `smsp__inst_executed_op_global_ld.sum`, `dram__bytes.sum`, `l1tex__average_t_sectors_per_request*.ratio` return `None` on sm_100. Use the sm_100 names in [`reference/08-b200-metric-names.md`](reference/08-b200-metric-names.md) or enumerate via `action.metric_names()`.
+1. **Metric names differ by architecture.** Names like `smsp__inst_executed_op_global_ld.sum` and `dram__bytes.sum` return `None` on Blackwell (sm_100/sm_103); the correct names have a `smsp__sass_` prefix or are split into `_read`/`_write` suffixes. Hopper (sm_90) uses the older names. Always check [`reference/08-gpu-metric-names.md`](reference/08-gpu-metric-names.md) first, or enumerate via `action.metric_names()`. Use `ncu --query-metrics --chip <chip>` to query all available names for a given chip.
 
 2. **Always compile with `-lineinfo`.** Without it, ncu's source view is blank and you cannot do per-line stall analysis. If you can't add `-lineinfo` to the build system (TVM-FFI, PyTorch inline, JIT), **build a standalone harness** — that's the whole point.
 
@@ -88,4 +97,5 @@ Most under-performing CUDA kernels are under-performing for exactly one reason t
 
 ## Related skills
 
-- [`blackwell-cuda-programming.md`](blackwell-cuda-programming.md) — Blackwell-specific programming principles and checklists, preserved as a companion reference. Use it when proposing *new* kernel designs; use this skill when diagnosing *existing* kernels.
+- [`blackwell-cuda-programming.md`](blackwell-cuda-programming.md) — Blackwell-specific programming principles and checklists (B200 / B300, sm_100/sm_103). Use it when proposing *new* kernel designs for Blackwell.
+- [`hopper-cuda-programming.md`](hopper-cuda-programming.md) — Hopper-specific programming principles (H200 / H800, sm_90). Use it when proposing *new* kernel designs for Hopper.

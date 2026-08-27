@@ -27,17 +27,18 @@ launch__occupancy_limit_blocks
 launch__occupancy_limit_registers
 launch__occupancy_limit_shared_mem
 launch__occupancy_limit_warps
-device__attribute_multiprocessor_count         (148 on B200)
-sm__maximum_warps_per_active_cycle_pct          (theoretical occupancy %)
-sm__warps_active.avg.pct_of_peak_sustained_active  (achieved occupancy %)
+device__attribute_multiprocessor_count    # 132 on H100/H200/H800 · 148 on B200 · 160 on B300
+sm__maximum_warps_per_active_cycle_pct    # theoretical occupancy %
+sm__warps_active.avg.pct_of_peak_sustained_active  # achieved occupancy %
 ```
 
 **Reading:**
 
-- **Waves / SM < 1**: grid is too small to fill the chip. On B200 with 148 SMs, if `launch__grid_size < 148 × blocks_per_SM`, some SMs sit idle the entire time. `Est. Speedup` from NCU often hits 50-90% here.
+- **Waves / SM < 1**: grid is too small to fill the chip. With fewer blocks than `SM_count × blocks_per_SM`, some SMs sit idle the entire time. `Est. Speedup` from NCU often hits 50-90% here. SM counts: 132 (H200/H800), 148 (B200), 160 (B300).
 - **Waves / SM in [1, 2)**: you have a tail wave (partial last wave). Tail effect magnitude is roughly `(last_wave_blocks / wave_size) × (block_exec_time / total_kernel_time)`.
 - **Waves / SM > 4**: grid is plenty big, scheduling averages out.
 - **Theoretical occupancy 100% but achieved << 100%**: stalls are the bottleneck, not launch config. Move to Dimension 3.
+
 - **Theoretical occupancy < 100% and `launch__occupancy_limit_registers` is the tightest**: reduce register usage or add `__launch_bounds__`.
 - **`launch__occupancy_limit_shared_mem`** the tightest: shared mem / block is too large, reduce tile size.
 
@@ -110,6 +111,9 @@ Ratios > 5x indicate significant potential for tail effect.
 **What:** when warps aren't issuing, what are they waiting for? Which source lines generate the most stalls?
 
 **Aggregate stall metrics (SOL-adjacent, aggregated over the kernel):**
+
+> **Metric name note:** on 🔵 Hopper (sm_90) the suffix is `.pct` and there is no `average_` prefix: `smsp__warps_issue_stalled_long_scoreboard_per_issue_active.pct`. On 🟠 Blackwell (sm_100/sm_103) the suffix is `.ratio` with `average_` prefix as shown below. See [`08-gpu-metric-names.md`](08-gpu-metric-names.md).
+
 ```
 # Ratio per issued warp — how many of 16 active warps are in each stall state
 smsp__average_warps_issue_stalled_long_scoreboard_per_issue_active.ratio
@@ -185,7 +189,9 @@ sm__ops_path_tensor_op_hmma_src_bf16_dst_fp32_sparsity_off.avg       # BF16×BF1
 - **`... = X%` but X << 50%**: tensor cores are being used but underutilized. Usually means data isn't arriving fast enough (Dimension 6) or tile sizes are wrong.
 - **`... > 50%`** on B200: kernel is doing well on the Tensor-Core front. Focus elsewhere.
 
-**Blackwell-specific note:** B200 uses 5th-gen tensor cores with `tcgen05.mma` + TMEM accumulators. Hand-rolled kernels need `tcgen05.alloc`, `tcgen05.mma`, `tcgen05.ld`, `tcgen05.dealloc` PTX. Most projects should use CUTLASS 4.x / cuBLAS instead of hand-rolling. See `../blackwell-cuda-programming.md` at the repo root.
+🟠 **Blackwell (B200/B300):** 5th-gen tensor cores with `tcgen05.mma` + TMEM accumulators. Hand-rolled kernels need `tcgen05.alloc`, `tcgen05.mma`, `tcgen05.ld`, `tcgen05.dealloc` PTX. Most projects should use CUTLASS 4.x / cuBLAS instead. B300 has higher FP4 peak (15 PFLOPS vs B200's 9 PFLOPS). See [`../blackwell-cuda-programming.md`](../blackwell-cuda-programming.md).
+
+🔵 **Hopper (H200/H800):** 4th-gen tensor cores with `wgmma` (warp-group MMA, 128 threads). No TMEM — accumulators live in registers. FP8 is the lowest supported precision (no FP4). See [`../hopper-cuda-programming.md`](../hopper-cuda-programming.md).
 
 **Fix direction:** if you see 0% and the workload is matrix-multiplication-shaped, redesign around MMA. This is usually a major refactor but gives 2-10× on compute-bound paths.
 
@@ -214,7 +220,7 @@ pmsampling:smsp__warps_issue_stalled_short_scoreboard.avg
 
 **Helper:** `plot_timeline.py` — renders ASCII plots. Look at multiple series side-by-side (SM throughput + DRAM throughput + long_scoreboard stalls) to distinguish the shapes.
 
-**Note:** PM sampling has ~2µs interval on B200. Very short kernels (< 20 µs) produce few samples — interpret with care.
+**Note:** PM sampling interval is ~2 µs on Blackwell and Hopper. Very short kernels (< 20 µs) produce few samples — interpret with care.
 
 ---
 

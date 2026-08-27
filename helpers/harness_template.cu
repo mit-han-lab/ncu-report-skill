@@ -5,9 +5,26 @@
 //     profile/<run_name>/harness/my_kernel_harness.cu
 // and customize the sections marked with TODO(you).
 //
-// Compile with:
+// Compile with (choose the line that matches your target GPU):
+//
+//   🟠 Blackwell B200  (sm_100, CC 10.0):
 //     nvcc -O2 -std=c++17 -lineinfo \
 //          -gencode=arch=compute_100,code=sm_100 \
+//          my_kernel_harness.cu -o my_kernel_harness
+//
+//   🟠 Blackwell B300  (sm_103, CC 10.3):
+//     nvcc -O2 -std=c++17 -lineinfo \
+//          -gencode=arch=compute_103,code=sm_103 \
+//          my_kernel_harness.cu -o my_kernel_harness
+//
+//   🟠 Blackwell B200 + B300 family (compute_100f runs on both sm_100 and sm_103):
+//     nvcc -O2 -std=c++17 -lineinfo \
+//          -gencode=arch=compute_100,code=compute_100 \
+//          my_kernel_harness.cu -o my_kernel_harness
+//
+//   🔵 Hopper H200 / H800  (sm_90, CC 9.0):
+//     nvcc -O2 -std=c++17 -lineinfo \
+//          -gencode=arch=compute_90,code=sm_90 \
 //          my_kernel_harness.cu -o my_kernel_harness
 //
 // Usage modes this template supports:
