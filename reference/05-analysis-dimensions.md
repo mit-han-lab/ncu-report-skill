@@ -163,6 +163,10 @@ smsp__pcsamp_warps_issue_stalled_selected                  # productive cycles
 
 **Helper:** `extract_stall_hotspots.py` produces `stall_hotspots_<tag>.txt` which ranks source lines by total stall samples. This directly points at the offending `LDG`, `BAR.SYNC`, or compute op in source.
 
+**Helper for the SASS view:** `sass_source_counters.py` dumps the per-instruction table of a report (`ncu --import --page source --print-source sass --csv`) and prints the top stall PCs, every branch with *Divergent Branches* > 0, and the execution counts on `BAR.SYNC`, `BRA.DIV`, `WARPSYNC`, `MEMBAR`, `ATOM`/`RED` and `CCTL` instructions. Two reports can be diffed instruction by instruction, which is how a barrier slow-path was found (Pattern I.1 in the playbook).
+
+**Ablation as a profiling method.** For a kernel with several phases (staging, compute, synchronization), add a runtime bit mask to the harness build that skips or swaps each phase, and time every combination. When the parts add up to the whole, the model is right and the profile can be trusted phase by phase; when they do not (a barrier that costs 1.8 µs alone and 14 µs after real work), the interaction is the finding, and it is invisible in any single profile. Run 1, 10, 100 and 1000 iterations too: the slope is the per-step cost, the intercept the launch and setup.
+
 ---
 
 ## Dimension 4 — Tensor Core utilization

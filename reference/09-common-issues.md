@@ -71,6 +71,14 @@ For JIT / framework-integrated builds:
 
 ---
 
+## `No kernels were profiled`, or the profile shows a cold cache the timing loop never sees
+
+1. **The kernel launches once** (persistent / cooperative kernels that loop internally), so `-s 2 -c 1` skips it. Use `-s 0`.
+2. **Kernel replay defeats cross-launch residency.** The default replay restores memory and flushes L2 between passes, so a kernel that relies on data left in L2 by earlier launches reports DRAM traffic and hit rates that contradict the event timing (1.5 % L2 hit under kernel replay, 93 % in reality for a 16.8 MB matrix reused every step). Use `--replay-mode application --cache-control none` (Recipe 4b in `03-collection.md`).
+3. **Four iterations is not steady state for a persistent kernel.** With `-c 1` on a single launch the one-time setup (loading a resident working set into shared memory) dominates the stall samples. Either profile a longer launch or subtract the setup with an iteration-scaling run in the timing harness.
+
+---
+
 ## ncu takes forever to finish
 
 1. **`--set full` needs 45+ replay passes.** That's normal — each pass reruns the kernel for a different metric group. If your kernel takes 3 ms, full profile takes ~15 s; 3 ms → 300 ms kernels are miserable. Mitigation: profile a smaller representative workload if possible.

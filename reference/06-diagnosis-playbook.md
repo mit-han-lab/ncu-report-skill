@@ -234,6 +234,55 @@ If `K < 8`: consider batching multiple iterations' results into a vectorized wri
 **Deeper fixes:**
 - Warp-specialized execution: producer warps and consumer warps with mbarrier instead of `__syncthreads`.
 
+**Where the samples land.** Stall samples are attributed to the instruction the warp is waiting to issue, which for a
+barrier is the instruction *after* the `BAR.SYNC`. In the source view the hot line is therefore the statement following
+the sync (often an innocuous loop header or `BSSY`), not the sync itself.
+
+**Read the stall ratios as a cycle budget, not a ranking.** `smsp__average_warps_issue_stalled_<reason>_per_issue_active.ratio`
+× instructions per warp ≈ cycles per warp spent in that state. A barrier ratio of 15.3 on a kernel that issues ~1 600
+instructions per warp per step is ~24 000 cycles ≈ 12 µs of the step at 2 GHz; if the step measures 20 µs, the barrier
+*is* the kernel and no amount of tuning elsewhere will show. Check that the budget adds up against the measured duration
+before choosing what to fix.
+
+### Pattern I.1 — A barrier that is far slower than its isolated cost (divergent arrival)
+
+**Signals:**
+- `barrier` dominates, but the same barrier measured alone (kernel with the work ablated) is cheap. A
+  `cooperative_groups::grid_group::sync()` cost 1.8 µs alone and 20 µs per step inside a real kernel on GB200.
+- In the SASS source view (`ncu --section SourceCounters`, then `ncu --import ... --page source --print-source sass --csv`,
+  or `helpers/sass_source_counters.py`): a `BRA.DIV` right before the `BAR.SYNC` with *Avg. Threads Executed* below 32,
+  and non-zero *Instructions Executed* on a `WARPSYNC.COLLECTIVE` / `BAR.SYNC.DEFER_BLOCKING` block near the end of the
+  function.
+
+**Why:** the non-aligned PTX `barrier.sync` (what `__barrier_sync()` and the cooperative-groups grid barrier emit) lets
+threads arrive individually, so the compiler wraps the hardware `BAR.SYNC` in a divergence check with a collective
+fallback and does *not* reconverge the warp first. A warp that arrives split (a branch where lane 0 did the atomic and
+the poll while lanes 1..31 skipped it is the classic case, and it is inside cg's own implementation) takes the fallback
+every time. `__syncthreads()` is the aligned `bar.sync`; the compiler emits `WARPSYNC.ALL` in front of it and the warp
+arrives whole.
+
+**Fix:** build the grid or inter-CTA barrier around `__syncthreads()` (release atomic by one thread, acquire polling,
+aligned CTA barrier on both sides) instead of `grid_group::sync()`; verify that the collective block's execution count
+drops to zero. Reproducing the slow case on purpose (same barrier with `asm("barrier.sync 0;")`) is a one-line
+confirmation. The cost of the fallback depends on the arrival pattern: the same cg barrier was harmless in a second
+kernel, so never carry a barrier's cost from one kernel to another.
+
+### Pattern I.2 — Inter-CTA handoff cost that does not respond to contention or placement
+
+**Signals:** a counter or flag barrier stays near 1 µs whether 19 or 152 CTAs arrive, whether the word is on the
+near or far die, and whether polling backs off.
+
+**Why:** the chain is two dependent L2 round trips (flag, then the data it guards) plus the release fence that drains
+the producer's stores. None of that is contention.
+
+**Fixes:**
+- Poll from one lane per producer per warp with relaxed loads and a single `fence.acq_rel` afterwards; 256 threads each
+  spinning with `ld.acquire` (an L1 invalidate per poll) on flags packed in one 128 B line saturated one L2 slice and made
+  the producers 3× slower. One 128 B line per flag.
+- Better: put the sequence tag in the data (the LL protocol from NCCL): 8 B `{payload, step}` words written by one store
+  and polled with 16 B loads, accepted when the tags match. No flag, no fence, no end-of-step barrier; the exchange in the
+  recurrent GEMV went from 1.1 µs to 0.5 µs per step.
+
 **Cross-ref:** Blackwell principle 16.
 
 ---

@@ -100,6 +100,39 @@ Most of the time you don't need these — the Python API (`04-python-api.md`) is
 
 ---
 
+## Recipe 4b: Kernels whose speed depends on state left by earlier launches (residency, persistent, recurrent)
+
+Default kernel replay saves and restores device memory between passes and flushes the caches before each pass
+(`--cache-control all`). A kernel that relies on data another launch left in L2 (a recurrence reusing the same matrix
+every step, a persistent kernel fed by a previous phase) then profiles as if everything came from DRAM: on a 16.8 MB
+matrix that the timing loop shows to be L2-resident, kernel replay reported 1.5 % L2 hit rate and every byte read from
+DRAM. Use application replay and leave the caches alone:
+
+```bash
+ncu --set full --section PmSampling_WarpStates \
+    --replay-mode application \
+    --cache-control none \
+    -k "regex:KERNEL_REGEX" -s <launches to skip> -c 1 \
+    -o $PROFILE_RUN_DIR/reports/full_<tag> \
+    ./harness [args]
+```
+
+| Flag | Meaning |
+|---|---|
+| `--replay-mode application` | Re-runs the whole program once per metric group instead of saving/restoring memory around one launch, so the profiled launch sees exactly the memory and cache state its predecessors left. The harness must be deterministic and short. |
+| `--cache-control none` | Do not flush L2 before each pass. Mandatory when cross-launch residency is the point. |
+| `-s N` | Skip the first N matching launches so the profiled one is in steady state (for example the third step of a recurrence). |
+
+Same report layout as Recipe 1, so `analyze_reports.py` and the other helpers work unchanged. With `--replay-mode application`
+and `--cache-control none` the same matrix showed 0 DRAM bytes and a 93 % L2 hit rate, matching the event timing.
+
+**Persistent kernels launch once.** A cooperative or persistent kernel that runs the whole loop inside one launch has
+exactly one matching launch, so `-s 2 -c 1` (the usual "skip warm-up" pattern) profiles nothing and ncu says
+`No kernels were profiled`. Use `-s 0` for those. Make the skip count a parameter of your profiling script rather than
+a constant.
+
+---
+
 ## Recipe 5: Targeted metrics only (fast)
 
 If you already know which metrics you want (e.g., you're re-running after a code change and only want to check if the fix worked), collect just those:

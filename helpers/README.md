@@ -28,6 +28,7 @@ nvcc -O2 -std=c++17 -lineinfo -gencode=arch=compute_100,code=sm_100 \
 | `analyze_reports.py` | Extract key metrics + side-by-side comparison from one or more `.ncu-rep`s |
 | `extract_stall_hotspots.py` | Aggregate per-PC stall samples → per-source-line rankings (requires source-level report) |
 | `plot_timeline.py` | ASCII plot PM sampling timelines (reveals tail effect, pipeline bubbles) |
+| `sass_source_counters.py` | Per-instruction view of one or two reports: top stall PCs, divergent branches, execution counts of barrier/sync/atomic instructions, optional instruction-by-instruction diff (uses `ncu --import --page source --print-source sass --csv`) |
 | `list_flashinfer_workloads.py` | Browse a flashinfer-trace dataset: show axes, histogram workload shapes, print safetensors paths for specific UUIDs |
 
 ### Typical Python workflow
@@ -55,9 +56,13 @@ python3 $HELPERS/extract_stall_hotspots.py --run-dir $PROFILE_RUN_DIR \
 python3 $HELPERS/plot_timeline.py --run-dir $PROFILE_RUN_DIR \
     --report $PROFILE_RUN_DIR/reports/full_<tag1>.ncu-rep --tag <tag1> \
     --report $PROFILE_RUN_DIR/reports/full_<tag2>.ncu-rep --tag <tag2>
+
+# SASS-level counters: where do warps arrive at barriers split, which sync instructions execute how often
+python3 $HELPERS/sass_source_counters.py $PROFILE_RUN_DIR/reports/full_<tag1>.ncu-rep
+python3 $HELPERS/sass_source_counters.py $PROFILE_RUN_DIR/reports/full_<tag1>.ncu-rep --diff $PROFILE_RUN_DIR/reports/full_<tag2>.ncu-rep
 ```
 
-All three scripts take `--run-dir` and write under `<run-dir>/analysis/`.
+All three run-dir scripts take `--run-dir` and write under `<run-dir>/analysis/`; `sass_source_counters.py` prints to stdout (or `--out FILE`).
 
 `ncu_utils.py` tries to auto-locate `ncu_report` from common CUDA install paths. If that fails, set `PYTHONPATH`:
 
